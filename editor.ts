@@ -2111,7 +2111,7 @@ function applyStrokeOverrides(svgEl) {
 
   var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
   style.id = styleId;
-  style.textContent = rules.join('\n');
+  style.textContent = rules.join(' ');
   svgEl.insertBefore(style, svgEl.firstChild);
 }
 
