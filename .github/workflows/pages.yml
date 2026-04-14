@@ -37,8 +37,8 @@ jobs:
           bun run index.ts
           bun run editor.ts
           mkdir -p site
-          cp index.html site/
-          cp editor.html site/
+          cp editor.html site/index.html
+          cp index.html site/samples.html
           cp -r public/* site/
 
       - name: Setup Pages
