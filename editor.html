@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Beautiful Mermaid — Live Editor</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -1121,7 +1124,7 @@
         </div>
       </div>
 
-      <!-- Padding section -->
+      <!-- Layout section -->
       <div class="config-section">
         <div class="config-section-title">Layout</div>
         <div class="padding-field">
@@ -1130,6 +1133,20 @@
             <input class="padding-num" id="cfg-padding" type="number" min="0" max="120" value="24" />
           </div>
           <input class="padding-slider" id="cfg-padding-slider" type="range" min="0" max="120" value="24" />
+        </div>
+        <div class="padding-field">
+          <div class="padding-row">
+            <label>Edge stroke</label>
+            <input class="padding-num" id="cfg-edge-stroke" type="number" min="0.25" max="8" step="0.25" value="1" />
+          </div>
+          <input class="padding-slider" id="cfg-edge-stroke-slider" type="range" min="0.25" max="8" step="0.25" value="1" />
+        </div>
+        <div class="padding-field">
+          <div class="padding-row">
+            <label>Node border</label>
+            <input class="padding-num" id="cfg-node-stroke" type="number" min="0.25" max="8" step="0.25" value="1" />
+          </div>
+          <input class="padding-slider" id="cfg-node-stroke-slider" type="range" min="0.25" max="8" step="0.25" value="1" />
         </div>
       </div>
 
@@ -1499,8 +1516,8 @@ async function doRender() {
     var svg = await renderMermaid(source, buildOptions());
     var ms = (performance.now() - t0).toFixed(0);
     previewInner.innerHTML = svg;
-    // Apply zoom
-    previewInner.querySelector('svg').style.transform = '';
+    var svgEl = previewInner.querySelector('svg');
+    applyStrokeOverrides(svgEl);
     applyZoom(state.zoom);
     statusText.textContent = 'OK';
     statusText.className = 'status-ok';
@@ -1935,6 +1952,82 @@ function setPadding(val) {
 
 paddingNum.addEventListener('input', function() { setPadding(paddingNum.value); });
 paddingSlider.addEventListener('input', function() { setPadding(paddingSlider.value); });
+
+// ── Stroke width overrides ────────────────────────────────────────────────────
+
+var cfgEdgeStroke = 1;
+var cfgNodeStroke = 1;
+
+// Inject a <style> block into the SVG to override hardcoded stroke-width attrs.
+// CSS rules override SVG presentation attributes (lower specificity).
+function applyStrokeOverrides(svgEl) {
+  var styleId = '__bm-sw-override';
+  var old = svgEl.querySelector('#' + styleId);
+  if (old) old.remove();
+
+  var edgeChanged = cfgEdgeStroke !== 1;
+  var nodeChanged = cfgNodeStroke !== 1;
+  if (!edgeChanged && !nodeChanged) return;
+
+  var rules = [];
+  if (edgeChanged) {
+    var ew = cfgEdgeStroke;
+    // Lines and paths/polylines with fill="none" are connectors/edges
+    rules.push(
+      'line { stroke-width: ' + ew + ' }',
+      'path[fill="none"] { stroke-width: ' + ew + ' }',
+      'polyline[fill="none"] { stroke-width: ' + ew + ' }',
+      'polygon[fill="none"] { stroke-width: ' + ew + ' }'  // open arrow heads
+    );
+  }
+  if (nodeChanged) {
+    var nw = cfgNodeStroke;
+    // Filled shapes are node borders; polygons with fill are diamond/hexagon etc.
+    rules.push(
+      'rect { stroke-width: ' + nw + ' }',
+      'ellipse { stroke-width: ' + nw + ' }',
+      'circle { stroke-width: ' + nw + ' }',
+      'polygon:not([fill="none"]) { stroke-width: ' + nw + ' }'
+    );
+  }
+
+  var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.id = styleId;
+  style.textContent = rules.join('
+');
+  svgEl.insertBefore(style, svgEl.firstChild);
+}
+
+function makeStrokeSetter(numEl, sliderEl, getVal, setVal) {
+  return function(raw) {
+    var v = Math.max(0.25, Math.min(8, parseFloat(raw) || 1));
+    v = Math.round(v * 4) / 4; // snap to 0.25 steps
+    setVal(v);
+    numEl.value    = v;
+    sliderEl.value = v;
+    var svgEl = previewInner.querySelector('svg');
+    if (svgEl) applyStrokeOverrides(svgEl);
+  };
+}
+
+var edgeStrokeNum    = document.getElementById('cfg-edge-stroke');
+var edgeStrokeSlider = document.getElementById('cfg-edge-stroke-slider');
+var nodeStrokeNum    = document.getElementById('cfg-node-stroke');
+var nodeStrokeSlider = document.getElementById('cfg-node-stroke-slider');
+
+var setEdgeStroke = makeStrokeSetter(edgeStrokeNum, edgeStrokeSlider,
+  function() { return cfgEdgeStroke; },
+  function(v) { cfgEdgeStroke = v; }
+);
+var setNodeStroke = makeStrokeSetter(nodeStrokeNum, nodeStrokeSlider,
+  function() { return cfgNodeStroke; },
+  function(v) { cfgNodeStroke = v; }
+);
+
+edgeStrokeNum.addEventListener('input',    function() { setEdgeStroke(edgeStrokeNum.value); });
+edgeStrokeSlider.addEventListener('input', function() { setEdgeStroke(edgeStrokeSlider.value); });
+nodeStrokeNum.addEventListener('input',    function() { setNodeStroke(nodeStrokeNum.value); });
+nodeStrokeSlider.addEventListener('input', function() { setNodeStroke(nodeStrokeSlider.value); });
 
 // ============================================================================
 // Tabs
