@@ -634,20 +634,32 @@ async function generateEditorHtml(): Promise<string> {
     }
 
     .preview-body {
-      flex: 1;
+      /* plain block scroll container — no flex, so overflow and percentage
+         widths on the child behave predictably across all browsers */
+      flex: 1;          /* still grows inside the panel-right flex column */
       overflow: auto;
-      display: flex;
-      align-items: flex-start;
-      justify-content: flex-start;
       padding: 2rem;
+      box-sizing: border-box;
       position: relative;
     }
+    .preview-body.pan-mode           { cursor: grab; }
+    .preview-body.pan-mode.panning   { cursor: grabbing; user-select: none; }
+    .preview-body.cmd-pan            { cursor: grab; }
+    .preview-body.cmd-pan.panning    { cursor: grabbing; user-select: none; }
+    .icon-btn.active { background: var(--accent); color: #fff; }
 
     .preview-inner {
-      /* min-size ensures the inner div always takes at least the full viewport
-         so small diagrams stay centred; large/zoomed ones scroll freely */
+      /* For SMALL diagrams (SVG fits in viewport):
+           min-width/min-height 100% fills the scroll container so the inner
+           flex centering actually centres the SVG in the visible area.
+         For LARGE diagrams (SVG > viewport):
+           width/height max-content expands the scrollable area to the SVG's
+           full dimensions. Scroll then starts at x=0 = left edge of the SVG,
+           so every participant is reachable without anything being cut off. */
       min-width: 100%;
       min-height: 100%;
+      width: max-content;
+      height: max-content;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -655,7 +667,7 @@ async function generateEditorHtml(): Promise<string> {
 
     .preview-inner svg {
       display: block;
-      flex-shrink: 0; /* never squash below its explicit w/h */
+      flex-shrink: 0;
     }
 
     .preview-error {
@@ -1492,6 +1504,15 @@ async function generateEditorHtml(): Promise<string> {
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
             </svg>
           </button>
+          <button class="icon-btn" id="pan-btn" title="Pan (hold to drag)" style="margin-left:0.25rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/>
+              <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/>
+              <path d="M10 10.5a2 2 0 0 0-2-2 2 2 0 0 0-2 2v1.5"/>
+              <path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2a8 8 0 0 1-7.4-5"/>
+              <path d="M6 14v-3a2 2 0 0 0-2-2 2 2 0 0 0-2 2v5"/>
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -1686,6 +1707,48 @@ document.getElementById('zoom-out-btn').addEventListener('click', function() {
 });
 document.getElementById('zoom-fit-btn').addEventListener('click', function() {
   applyZoom(1);
+});
+
+// ── Pan (drag-to-scroll) ───────────────────────────────────────────────────
+var panBtn = document.getElementById('pan-btn');
+var panActive = false;
+var panStart = null;
+
+panBtn.addEventListener('click', function() {
+  panActive = !panActive;
+  panBtn.classList.toggle('active', panActive);
+  previewBody.classList.toggle('pan-mode', panActive);
+});
+
+previewBody.addEventListener('mousedown', function(e) {
+  var shouldPan = panActive || e.metaKey || e.ctrlKey;
+  if (!shouldPan) return;
+  if (e.button !== 0) return;
+  e.preventDefault();
+  panStart = { x: e.clientX, y: e.clientY, sl: previewBody.scrollLeft, st: previewBody.scrollTop };
+  previewBody.classList.add('panning');
+});
+
+window.addEventListener('mousemove', function(e) {
+  if (!panStart) return;
+  var dx = e.clientX - panStart.x;
+  var dy = e.clientY - panStart.y;
+  previewBody.scrollLeft = panStart.sl - dx;
+  previewBody.scrollTop  = panStart.st  - dy;
+});
+
+window.addEventListener('mouseup', function() {
+  if (!panStart) return;
+  panStart = null;
+  previewBody.classList.remove('panning');
+});
+
+// Show grab cursor when Cmd/Ctrl is held over the preview
+window.addEventListener('keydown', function(e) {
+  if (e.metaKey || e.ctrlKey) previewBody.classList.add('cmd-pan');
+});
+window.addEventListener('keyup', function(e) {
+  if (!e.metaKey && !e.ctrlKey) previewBody.classList.remove('cmd-pan');
 });
 
 // Ctrl/Cmd+scroll → zoom; plain scroll → pan (browser default)
