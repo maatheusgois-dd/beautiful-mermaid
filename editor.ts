@@ -634,21 +634,25 @@ async function generateEditorHtml(): Promise<string> {
       flex: 1;
       overflow: auto;
       display: flex;
-      align-items: center;
-      justify-content: center;
+      align-items: flex-start;
+      justify-content: flex-start;
       padding: 2rem;
       position: relative;
     }
 
     .preview-inner {
-      transform-origin: center center;
-      transition: transform 0.15s;
+      /* min-size ensures the inner div always takes at least the full viewport
+         so small diagrams stay centred; large/zoomed ones scroll freely */
+      min-width: 100%;
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .preview-inner svg {
       display: block;
-      max-width: 100%;
-      height: auto;
+      flex-shrink: 0; /* never squash below its explicit w/h */
     }
 
     .preview-error {
@@ -1635,12 +1639,24 @@ async function doRender() {
 // Zoom
 // ============================================================================
 
+function getSvgNaturalSize(svgEl) {
+  // Prefer viewBox dimensions; fall back to width/height attrs
+  var vb = svgEl.viewBox && svgEl.viewBox.baseVal;
+  if (vb && vb.width > 0 && vb.height > 0) return { w: vb.width, h: vb.height };
+  var w = parseFloat(svgEl.getAttribute('width'))  || svgEl.getBoundingClientRect().width  || 400;
+  var h = parseFloat(svgEl.getAttribute('height')) || svgEl.getBoundingClientRect().height || 300;
+  return { w: w, h: h };
+}
+
 function applyZoom(z) {
-  state.zoom = Math.max(0.1, Math.min(4, z));
+  state.zoom = Math.max(0.1, Math.min(8, z));
   var svgEl = previewInner.querySelector('svg');
   if (svgEl) {
-    svgEl.style.transform = 'scale(' + state.zoom + ')';
-    svgEl.style.transformOrigin = 'center center';
+    var nat = getSvgNaturalSize(svgEl);
+    svgEl.style.width  = (nat.w * state.zoom) + 'px';
+    svgEl.style.height = (nat.h * state.zoom) + 'px';
+    // Remove any leftover transform from old approach
+    svgEl.style.transform = '';
   }
   zoomLabel.textContent = Math.round(state.zoom * 100) + '%';
 }
@@ -1655,12 +1671,12 @@ document.getElementById('zoom-fit-btn').addEventListener('click', function() {
   applyZoom(1);
 });
 
-// Scroll to zoom
+// Ctrl/Cmd+scroll → zoom; plain scroll → pan (browser default)
 previewBody.addEventListener('wheel', function(e) {
   if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
-  var delta = e.deltaY > 0 ? 0.9 : 1.1;
-  applyZoom(state.zoom * delta);
+  var factor = Math.pow(0.999, e.deltaY); // smooth pinch-style scaling
+  applyZoom(state.zoom * factor);
 }, { passive: false });
 
 // ============================================================================
