@@ -1137,16 +1137,16 @@
         <div class="padding-field">
           <div class="padding-row">
             <label>Edge stroke</label>
-            <input class="padding-num" id="cfg-edge-stroke" type="number" min="0.25" max="8" step="0.25" value="1" />
+            <input class="padding-num" id="cfg-edge-stroke" type="number" min="0.25" max="6" step="0.25" value="1" />
           </div>
-          <input class="padding-slider" id="cfg-edge-stroke-slider" type="range" min="0.25" max="8" step="0.25" value="1" />
+          <input class="padding-slider" id="cfg-edge-stroke-slider" type="range" min="0.25" max="6" step="0.25" value="1" />
         </div>
         <div class="padding-field">
           <div class="padding-row">
             <label>Node border</label>
-            <input class="padding-num" id="cfg-node-stroke" type="number" min="0.25" max="8" step="0.25" value="1" />
+            <input class="padding-num" id="cfg-node-stroke" type="number" min="0.25" max="6" step="0.25" value="1" />
           </div>
-          <input class="padding-slider" id="cfg-node-stroke-slider" type="range" min="0.25" max="8" step="0.25" value="1" />
+          <input class="padding-slider" id="cfg-node-stroke-slider" type="range" min="0.25" max="6" step="0.25" value="1" />
         </div>
       </div>
 
@@ -1958,48 +1958,53 @@ paddingSlider.addEventListener('input', function() { setPadding(paddingSlider.va
 var cfgEdgeStroke = 1;
 var cfgNodeStroke = 1;
 
-// Inject a <style> block into the SVG to override hardcoded stroke-width attrs.
-// CSS rules override SVG presentation attributes (lower specificity).
+// Apply stroke-width overrides directly on SVG elements, skipping <defs>
+// (markers, arrow heads, clip paths live in defs and must not be touched).
 function applyStrokeOverrides(svgEl) {
-  var styleId = '__bm-sw-override';
-  var old = svgEl.querySelector('#' + styleId);
-  if (old) old.remove();
+  if (!svgEl) return;
+  var defsEl = svgEl.querySelector('defs');
 
-  var edgeChanged = cfgEdgeStroke !== 1;
-  var nodeChanged = cfgNodeStroke !== 1;
-  if (!edgeChanged && !nodeChanged) return;
-
-  var rules = [];
-  if (edgeChanged) {
-    var ew = cfgEdgeStroke;
-    // Lines and paths/polylines with fill="none" are connectors/edges
-    rules.push(
-      'line { stroke-width: ' + ew + ' }',
-      'path[fill="none"] { stroke-width: ' + ew + ' }',
-      'polyline[fill="none"] { stroke-width: ' + ew + ' }',
-      'polygon[fill="none"] { stroke-width: ' + ew + ' }'  // open arrow heads
-    );
-  }
-  if (nodeChanged) {
-    var nw = cfgNodeStroke;
-    // Filled shapes are node borders; polygons with fill are diamond/hexagon etc.
-    rules.push(
-      'rect { stroke-width: ' + nw + ' }',
-      'ellipse { stroke-width: ' + nw + ' }',
-      'circle { stroke-width: ' + nw + ' }',
-      'polygon:not([fill="none"]) { stroke-width: ' + nw + ' }'
-    );
+  function inDefs(el) {
+    return defsEl && defsEl.contains(el);
   }
 
-  var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-  style.id = styleId;
-  style.textContent = rules.join(' ');
-  svgEl.insertBefore(style, svgEl.firstChild);
+  if (cfgEdgeStroke !== 1) {
+    var ew = String(cfgEdgeStroke);
+    // Connectors are lines, fill=none paths/polylines
+    svgEl.querySelectorAll('line, path[fill="none"], polyline[fill="none"]').forEach(function(el) {
+      if (!inDefs(el)) el.setAttribute('stroke-width', ew);
+    });
+    // markerUnits="strokeWidth" (default): both the viewport AND the polygon
+    // coordinate space scale with stroke-width, so reducing markerWidth just clips.
+    // Fix: add a viewBox to decouple polygon coords from the viewport, then switch to
+    // userSpaceOnUse with absolute sizes = origSize * sqrt(ew).
+    // sqrt damping: at stroke=4 arrows are 2x original, at stroke=6 ~2.45x.
+    var arrowFactor = Math.sqrt(cfgEdgeStroke);
+    svgEl.querySelectorAll('defs marker').forEach(function(marker) {
+      var origW = parseFloat(marker.getAttribute('markerWidth')  || '8');
+      var origH = parseFloat(marker.getAttribute('markerHeight') || '5');
+      // viewBox maps the polygon's local coordinate space (0..origW × 0..origH)
+      // into whatever markerWidth/markerHeight we set — refX/refY stay unchanged
+      // because they reference the viewBox coordinate system.
+      marker.setAttribute('viewBox', '0 0 ' + origW + ' ' + origH);
+      marker.setAttribute('markerUnits', 'userSpaceOnUse');
+      marker.setAttribute('markerWidth',  String(origW * arrowFactor));
+      marker.setAttribute('markerHeight', String(origH * arrowFactor));
+    });
+  }
+
+  if (cfgNodeStroke !== 1) {
+    var nw = String(cfgNodeStroke);
+    // Node borders: rect, ellipse, circle, filled polygons — all outside defs
+    svgEl.querySelectorAll('rect, ellipse, circle, polygon').forEach(function(el) {
+      if (!inDefs(el)) el.setAttribute('stroke-width', nw);
+    });
+  }
 }
 
 function makeStrokeSetter(numEl, sliderEl, getVal, setVal) {
   return function(raw) {
-    var v = Math.max(0.25, Math.min(8, parseFloat(raw) || 1));
+    var v = Math.max(0.25, Math.min(6, parseFloat(raw) || 1));
     v = Math.round(v * 4) / 4; // snap to 0.25 steps
     setVal(v);
     numEl.value    = v;
