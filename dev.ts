@@ -88,8 +88,8 @@ watch(ROOT, { recursive: true }, onFileChange)
 await rebuild()
 
 console.log(`\x1b[36m[dev]\x1b[0m Server running at \x1b[1mhttp://localhost:${PORT}\x1b[0m`)
-console.log(`\x1b[36m[dev]\x1b[0m   /        → samples showcase`)
-console.log(`\x1b[36m[dev]\x1b[0m   /editor  → live diagram editor\n`)
+console.log(`\x1b[36m[dev]\x1b[0m   /         → live editor (main)`)
+console.log(`\x1b[36m[dev]\x1b[0m   /samples  → samples showcase\n`)
 
 function injectLiveReload(html: string): string {
   return html.replace(
@@ -129,21 +129,21 @@ Bun.serve({
       })
     }
 
-    // Editor route
-    if (url.pathname === '/editor' || url.pathname === '/editor.html') {
-      const file = Bun.file(join(ROOT, 'editor.html'))
+    // Samples showcase (moved to /samples)
+    if (url.pathname === '/samples' || url.pathname === '/samples.html') {
+      const file = Bun.file(join(ROOT, 'index.html'))
       if (!(await file.exists())) {
-        return new Response('editor.html not found — build may have failed', { status: 404 })
+        return new Response('index.html not found — build may have failed', { status: 404 })
       }
       return new Response(injectLiveReload(await file.text()), {
         headers: { 'Content-Type': 'text/html' },
       })
     }
 
-    // Samples showcase (root)
-    const file = Bun.file(join(ROOT, 'index.html'))
+    // Editor (root + /editor)
+    const file = Bun.file(join(ROOT, 'editor.html'))
     if (!(await file.exists())) {
-      return new Response('index.html not found — build may have failed', { status: 404 })
+      return new Response('editor.html not found — build may have failed', { status: 404 })
     }
     return new Response(injectLiveReload(await file.text()), {
       headers: { 'Content-Type': 'text/html' },
