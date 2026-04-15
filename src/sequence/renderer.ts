@@ -332,13 +332,13 @@ function renderNote(note: PositionedNote): string {
     `<g class="note"${positionAttr}${actorsAttr}>` +
     // Note body with bg fill and clipped corner
     `\n  <polygon points="${bodyPoints}" ` +
-    `fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.innerBox}" />` +
+    `fill="var(--_group-hdr)" stroke="var(--_line)" stroke-width="${STROKE_WIDTHS.innerBox}" />` +
     // Fold triangle (the folded-over corner)
     `\n  <polygon points="${x + w - foldSize},${y} ${x + w},${y + foldSize} ${x + w - foldSize},${y + foldSize}" ` +
-    `fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.innerBox}" />` +
+    `fill="var(--_line)" stroke="var(--_line)" stroke-width="${STROKE_WIDTHS.innerBox}" />` +
     // Note text (supports multi-line)
     `\n  ${renderMultilineText(note.text, x + w / 2, y + h / 2, FONT_SIZES.edgeLabel,
-      `font-size="${FONT_SIZES.edgeLabel}" text-anchor="middle" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-muted)"`)}` +
+      `font-size="${FONT_SIZES.edgeLabel}" text-anchor="middle" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-sec)"`)}` +
     `\n</g>`
   )
 }
