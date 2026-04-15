@@ -44,8 +44,8 @@ const SEQ = {
   dividerExtra: 24,
   /** Note dimensions */
   noteWidth: 60,
-  notePadX: 12,
-  notePadY: 6,
+  notePadX: 14,
+  notePadY: 10,
   noteGap: 10,
 } as const
 
@@ -226,11 +226,13 @@ export function layoutSequenceDiagram(
       let noteY = messages[msgIdx]!.y + selfLoopExtra + 8
 
       for (const note of notesForMsg) {
-        const noteW = Math.max(
-          SEQ.noteWidth,
-          estimateTextWidth(note.text, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel) + SEQ.notePadX * 2
-        )
-        const noteH = FONT_SIZES.edgeLabel + SEQ.notePadY * 2
+        const noteLines = note.text.split('\n')
+        const maxLineW = Math.max(...noteLines.map(l => estimateTextWidth(l, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)))
+        const noteW = Math.max(SEQ.noteWidth, maxLineW + SEQ.notePadX * 2)
+        const noteLH = FONT_SIZES.edgeLabel * LINE_HEIGHT_RATIO
+        const noteH = noteLines.length === 1
+          ? FONT_SIZES.edgeLabel + SEQ.notePadY * 2
+          : (noteLines.length - 1) * noteLH + FONT_SIZES.edgeLabel + SEQ.notePadY * 2
 
         // X positioning based on actor position and note type
         const firstActorIdx = actorIndex.get(note.actorIds[0] ?? '') ?? 0
