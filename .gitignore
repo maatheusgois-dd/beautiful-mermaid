@@ -13,9 +13,13 @@ editor.html
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 .DS_Store
+
+# Firebase
+.firebase/
 
 # Logs
 *.log

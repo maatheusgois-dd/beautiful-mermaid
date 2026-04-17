@@ -505,6 +505,7 @@ function buildNodeToSubgraphMap(subgraphs: MermaidSubgraph[]): Map<string, strin
   return map
 }
 
+
 // ============================================================================
 // Result conversion: ELK output → PositionedGraph
 // ============================================================================
@@ -566,10 +567,18 @@ function elkToPositioned(
       }
     : undefined
 
+  // Build node position lookup for edge extraction (used when ELK fails to
+  // route cross-hierarchy edges whose endpoints sit at different hierarchy
+  // depths — we then fall back to the node center).
+  const nodePositions = new Map<string, { x: number; y: number; width: number; height: number }>()
+  for (const n of nodes) {
+    nodePositions.set(n.id, { x: n.x, y: n.y, width: n.width, height: n.height })
+  }
+
   // Extract edges recursively from all levels (root and subgraphs)
   // Edges are distributed to subgraphs for direction override to work,
   // so we need to collect them from all children with proper offsets
-  extractEdgesRecursively(elkResult, graph, edges, 0, 0, margins)
+  extractEdgesRecursively(elkResult, graph, edges, 0, 0, margins, nodePositions)
 
   // Snap same-layer nodes to the same position along the flow axis.
   // ELK's orthogonal routing staggers nodes within a layer to create room for
@@ -605,14 +614,49 @@ function elkToPositioned(
   const arrowMargin = ARROW_HEAD.width
   const padding = DEFAULTS.padding
 
+  // Detour routing can push edges and labels to the left of the diagram's
+  // natural origin. Figure out how far left any content reaches so we can
+  // shift everything right to keep the SVG viewBox starting at 0.
+  let minX = 0
+  let minY = 0
+  for (const edge of edges) {
+    for (const p of edge.points) {
+      minX = Math.min(minX, p.x - arrowMargin)
+      minY = Math.min(minY, p.y - arrowMargin)
+    }
+    if (edge.labelPosition && edge.label) {
+      const m = measureMultilineText(edge.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
+      const halfW = m.width / 2 + 16
+      const halfH = m.height / 2 + 8
+      minX = Math.min(minX, edge.labelPosition.x - halfW)
+      minY = Math.min(minY, edge.labelPosition.y - halfH)
+    }
+  }
+  const shiftX = minX < padding ? padding - minX : 0
+  const shiftY = minY < padding ? padding - minY : 0
+  if (shiftX > 0 || shiftY > 0) {
+    for (const n of nodes) { n.x += shiftX; n.y += shiftY }
+    for (const g of groups) shiftGroup(g, shiftX, shiftY)
+    for (const edge of edges) {
+      for (const p of edge.points) { p.x += shiftX; p.y += shiftY }
+      if (edge.labelPosition) {
+        edge.labelPosition.x += shiftX
+        edge.labelPosition.y += shiftY
+      }
+    }
+    width += shiftX
+    height += shiftY
+  }
+
   for (const edge of edges) {
     for (const p of edge.points) {
       width = Math.max(width, p.x + arrowMargin + padding)
       height = Math.max(height, p.y + arrowMargin + padding)
     }
-    if (edge.labelPosition) {
-      width = Math.max(width, edge.labelPosition.x + 60 + padding)
-      height = Math.max(height, edge.labelPosition.y + 20 + padding)
+    if (edge.labelPosition && edge.label) {
+      const m = measureMultilineText(edge.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
+      width = Math.max(width, edge.labelPosition.x + m.width / 2 + 16 + padding)
+      height = Math.max(height, edge.labelPosition.y + m.height / 2 + 8 + padding)
     }
   }
 
@@ -623,6 +667,13 @@ function elkToPositioned(
     edges,
     groups,
   }
+}
+
+/** Recursively shift a group and all its descendants. */
+function shiftGroup(g: PositionedGroup, dx: number, dy: number): void {
+  g.x += dx
+  g.y += dy
+  for (const c of g.children) shiftGroup(c, dx, dy)
 }
 
 /**
@@ -749,7 +800,8 @@ function extractEdgesRecursively(
   edges: PositionedEdge[],
   offsetX: number,
   offsetY: number,
-  margins?: MarginInfo
+  margins?: MarginInfo,
+  nodePositions?: Map<string, { x: number; y: number; width: number; height: number }>
 ): void {
   // First pass: collect all edge segments
   const segments = new Map<number, { external?: EdgeSegment; incoming?: EdgeSegment; outgoing?: EdgeSegment }>()
@@ -791,6 +843,32 @@ function extractEdgesRecursively(
         allPoints.push(...seg.incoming.points.slice(1))
       } else {
         allPoints.push(...seg.incoming.points)
+      }
+    }
+
+    // Patch missing endpoints: ELK's SEPARATE mode sometimes emits zero-point
+    // external edges for cross-hierarchy routes whose endpoints are buried
+    // several levels deep. When the combined path doesn't start at the real
+    // source or end at the real target, splice in the node center so the
+    // downstream orthogonalizer has something sane to work with.
+    if (nodePositions && allPoints.length > 0) {
+      const srcPos = nodePositions.get(originalEdge.source)
+      const tgtPos = nodePositions.get(originalEdge.target)
+      if (srcPos) {
+        const sc = { x: srcPos.x + srcPos.width / 2, y: srcPos.y + srcPos.height / 2 }
+        const first = allPoints[0]!
+        const pointInSrcBox =
+          first.x >= srcPos.x - 2 && first.x <= srcPos.x + srcPos.width + 2 &&
+          first.y >= srcPos.y - 2 && first.y <= srcPos.y + srcPos.height + 2
+        if (!pointInSrcBox) allPoints.unshift(sc)
+      }
+      if (tgtPos) {
+        const tc = { x: tgtPos.x + tgtPos.width / 2, y: tgtPos.y + tgtPos.height / 2 }
+        const last = allPoints[allPoints.length - 1]!
+        const pointInTgtBox =
+          last.x >= tgtPos.x - 2 && last.x <= tgtPos.x + tgtPos.width + 2 &&
+          last.y >= tgtPos.y - 2 && last.y <= tgtPos.y + tgtPos.height + 2
+        if (!pointInTgtBox) allPoints.push(tc)
       }
     }
 
@@ -855,67 +933,81 @@ function orthogonalizeEdgePoints(
 ): Point[] {
   if (points.length < 2) return points
 
+  const groups = margins?.groups ?? []
+  const src = points[0]!
+  const tgt = points[points.length - 1]!
+
   let needsWork = false
   for (let i = 1; i < points.length; i++) {
     const dx = Math.abs(points[i]!.x - points[i - 1]!.x)
     const dy = Math.abs(points[i]!.y - points[i - 1]!.y)
     if (dx > 1 && dy > 1) { needsWork = true; break }
   }
-  if (!needsWork) return points
 
-  const EDGE_SPACING = 12
-  const result: Point[] = [points[0]!]
-
-  for (let i = 1; i < points.length; i++) {
-    const prev = result[result.length - 1]!
-    const curr = points[i]!
-    const dx = Math.abs(curr.x - prev.x)
-    const dy = Math.abs(curr.y - prev.y)
-
-    if (dx > 1 && dy > 1) {
-      // Prefer simple Z-paths. Only fall back to margin detour when both
-      // elbow choices would land the junction inside a subgraph that contains
-      // neither endpoint (i.e. a group the edge has no business entering).
-      const elbowH: Point = { x: curr.x, y: prev.y } // horizontal then vertical
-      const elbowV: Point = { x: prev.x, y: curr.y } // vertical then horizontal
-
-      const groups = margins?.groups ?? []
-      const src = points[0]!
-      const tgt = points[points.length - 1]!
-      const elbowHBad =
-        junctionInsideForeignGroup(elbowH, src, tgt, groups) ||
-        segmentCrossesForeignGroup(prev, elbowH, src, tgt, groups) ||
-        segmentCrossesForeignGroup(elbowH, curr, src, tgt, groups)
-      const elbowVBad =
-        junctionInsideForeignGroup(elbowV, src, tgt, groups) ||
-        segmentCrossesForeignGroup(prev, elbowV, src, tgt, groups) ||
-        segmentCrossesForeignGroup(elbowV, curr, src, tgt, groups)
-
-      if (!elbowHBad) {
-        result.push(elbowH)
-      } else if (!elbowVBad) {
-        result.push(elbowV)
-      } else if (margins) {
-        // Last resort: detour through the nearest diagram margin so we skirt
-        // the blocking group. Alternate sides for parallel-edge spacing.
-        const useRight = edgeIndex % 2 === 0
-        const offset = Math.floor(edgeIndex / 2) * EDGE_SPACING
-        const marginX = useRight
-          ? margins.rightX + offset
-          : margins.leftX - offset
-        result.push({ x: marginX, y: prev.y })
-        result.push({ x: marginX, y: curr.y })
-      } else {
-        const midY = (prev.y + curr.y) / 2
-        result.push({ x: prev.x, y: midY })
-        result.push({ x: curr.x, y: midY })
+  // Even if already orthogonal, rebuild the path if any segment pierces a
+  // foreign subgraph (ELK's SEPARATE mode can produce wild detours for
+  // cross-hierarchy edges). We also rebuild when the path strays far outside
+  // the source/target bounding box or includes negative coordinates.
+  if (!needsWork && groups.length > 0) {
+    for (let i = 1; i < points.length; i++) {
+      if (segmentCrossesForeignGroup(points[i - 1]!, points[i]!, src, tgt, groups)) {
+        needsWork = true
+        break
       }
     }
+  }
+  if (!needsWork) return points
 
-    result.push(curr)
+  // Rebuild a clean path from src to tgt: try Z-elbows first, then escape
+  // detours around the source's outermost containing group. The original
+  // intermediate points are discarded.
+  const EDGE_SPACING = 12
+  const elbowH: Point = { x: tgt.x, y: src.y }
+  const elbowV: Point = { x: src.x, y: tgt.y }
+
+  const elbowHBad =
+    Math.abs(tgt.x - src.x) <= 1 ||
+    Math.abs(tgt.y - src.y) <= 1
+      ? false
+      : junctionInsideForeignGroup(elbowH, src, tgt, groups) ||
+        segmentCrossesForeignGroup(src, elbowH, src, tgt, groups) ||
+        segmentCrossesForeignGroup(elbowH, tgt, src, tgt, groups)
+  const elbowVBad =
+    Math.abs(tgt.x - src.x) <= 1 ||
+    Math.abs(tgt.y - src.y) <= 1
+      ? false
+      : junctionInsideForeignGroup(elbowV, src, tgt, groups) ||
+        segmentCrossesForeignGroup(src, elbowV, src, tgt, groups) ||
+        segmentCrossesForeignGroup(elbowV, tgt, src, tgt, groups)
+
+  if (!elbowHBad && Math.abs(tgt.x - src.x) > 1 && Math.abs(tgt.y - src.y) > 1) {
+    return [src, elbowH, tgt]
+  }
+  if (!elbowVBad && Math.abs(tgt.x - src.x) > 1 && Math.abs(tgt.y - src.y) > 1) {
+    return [src, elbowV, tgt]
   }
 
-  return result
+  // Already collinear or would need a detour
+  if (Math.abs(tgt.x - src.x) <= 1 || Math.abs(tgt.y - src.y) <= 1) {
+    return [src, tgt]
+  }
+
+  const detour = computeEscapeDetour(src, tgt, src, tgt, groups, edgeIndex)
+  if (detour) {
+    return [src, ...detour, tgt]
+  }
+
+  if (margins) {
+    const useRight = edgeIndex % 2 === 0
+    const offset = Math.floor(edgeIndex / 2) * EDGE_SPACING
+    const marginX = useRight
+      ? margins.rightX + offset
+      : margins.leftX - offset
+    return [src, { x: marginX, y: src.y }, { x: marginX, y: tgt.y }, tgt]
+  }
+
+  const midY = (src.y + tgt.y) / 2
+  return [src, { x: src.x, y: midY }, { x: tgt.x, y: midY }, tgt]
 }
 
 /**
@@ -984,6 +1076,106 @@ function segmentCrossesForeignGroup(
     }
   }
   return false
+}
+
+/**
+ * Compute a detour that clears foreign subgraphs. Generates candidates that
+ * route around (a) each individual blocking group's nearest clear side and
+ * (b) the source's outermost containing group. Picks the cheapest clean path.
+ */
+function computeEscapeDetour(
+  prev: Point,
+  curr: Point,
+  src: Point,
+  tgt: Point,
+  groups: GroupBounds[],
+  edgeIndex: number
+): Point[] | null {
+  // Stagger detour offsets so parallel escape routes don't stack on top of
+  // each other. Use a wider stride (24px) cycling through 6 slots — gives a
+  // visible spread when multiple edges escape through the same margin.
+  const PAD = 12 + (edgeIndex % 6) * 14
+  const candidates: Array<{ mids: Point[]; cost: number }> = []
+
+  const mkCand = (mids: Point[]) => {
+    if (mids.length === 0) return
+    const path = [prev, ...mids, curr]
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1]!
+      const b = path[i]!
+      // Reject diagonals: every generated segment must be axis-aligned.
+      if (Math.abs(a.x - b.x) > 1 && Math.abs(a.y - b.y) > 1) return
+      if (segmentCrossesForeignGroup(a, b, src, tgt, groups)) return
+    }
+    let cost = 0
+    for (let i = 1; i < path.length; i++) {
+      cost += Math.abs(path[i]!.x - path[i - 1]!.x) + Math.abs(path[i]!.y - path[i - 1]!.y)
+    }
+    candidates.push({ mids, cost })
+  }
+
+  // Candidates that route around the source's outermost containing group.
+  const srcOCG = outermostContaining(src, groups)
+  if (srcOCG) {
+    const rightX = srcOCG.right + PAD
+    const leftX = srcOCG.x - PAD
+    const bottomY = srcOCG.bottom + PAD
+    const topY = srcOCG.y - PAD
+    mkCand([{ x: rightX, y: prev.y }, { x: rightX, y: curr.y }])
+    mkCand([{ x: leftX, y: prev.y }, { x: leftX, y: curr.y }])
+    mkCand([{ x: prev.x, y: bottomY }, { x: curr.x, y: bottomY }])
+    mkCand([{ x: prev.x, y: topY }, { x: curr.x, y: topY }])
+  }
+
+  // Candidates that tuck around individual foreign groups. Often much tighter
+  // than escaping the whole container (e.g., detour around BUNDLE instead of
+  // all the way around LEFT). For every foreign group, propose bends at each
+  // of its four sides for both vertical-first and horizontal-first Z-paths.
+  for (const g of groups) {
+    const containsSrc =
+      src.x >= g.x - 1 && src.x <= g.right + 1 &&
+      src.y >= g.y - 1 && src.y <= g.bottom + 1
+    const containsTgt =
+      tgt.x >= g.x - 1 && tgt.x <= g.right + 1 &&
+      tgt.y >= g.y - 1 && tgt.y <= g.bottom + 1
+    if (containsSrc || containsTgt) continue
+
+    const rightX = g.right + PAD
+    const leftX = g.x - PAD
+    const bottomY = g.bottom + PAD
+    const topY = g.y - PAD
+
+    // Vertical-first detours (shift the vertical leg of elbowV to clear g).
+    mkCand([{ x: rightX, y: prev.y }, { x: rightX, y: curr.y }])
+    mkCand([{ x: leftX, y: prev.y }, { x: leftX, y: curr.y }])
+
+    // Horizontal-first detours (shift the horizontal leg of elbowH to clear g).
+    mkCand([{ x: prev.x, y: bottomY }, { x: curr.x, y: bottomY }])
+    mkCand([{ x: prev.x, y: topY }, { x: curr.x, y: topY }])
+  }
+
+  if (candidates.length === 0) return null
+  candidates.sort((a, b) => a.cost - b.cost)
+  return candidates[0]!.mids
+}
+
+/**
+ * Find the outermost (largest-area) group that contains point p, or null.
+ */
+function outermostContaining(p: Point, groups: GroupBounds[]): GroupBounds | null {
+  const TOL = 1
+  let best: GroupBounds | null = null
+  let bestArea = 0
+  for (const g of groups) {
+    if (p.x >= g.x - TOL && p.x <= g.right + TOL && p.y >= g.y - TOL && p.y <= g.bottom + TOL) {
+      const area = (g.right - g.x) * (g.bottom - g.y)
+      if (area > bestArea) {
+        bestArea = area
+        best = g
+      }
+    }
+  }
+  return best
 }
 
 /**
