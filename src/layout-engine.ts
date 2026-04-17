@@ -512,10 +512,19 @@ function buildNodeToSubgraphMap(subgraphs: MermaidSubgraph[]): Map<string, strin
 /**
  * Convert ELK layout result to our PositionedGraph format.
  */
+/** Group bounding box used by routing to detect when a Z-path crosses a subgraph */
+interface GroupBounds {
+  x: number
+  y: number
+  right: number
+  bottom: number
+}
+
 /** Margin routing info for cross-hierarchy edges */
 interface MarginInfo {
   leftX: number
   rightX: number
+  groups: GroupBounds[]
 }
 
 /** Recursively flatten all group bounding boxes (including nested children) */
@@ -553,6 +562,7 @@ function elkToPositioned(
     ? {
         leftX: Math.min(...allBounds.map(b => b.x)) - 20,
         rightX: Math.max(...allBounds.map(b => b.right)) + 20,
+        groups: allBounds,
       }
     : undefined
 
@@ -845,7 +855,6 @@ function orthogonalizeEdgePoints(
 ): Point[] {
   if (points.length < 2) return points
 
-  // Check if any segment needs orthogonalization
   let needsWork = false
   for (let i = 1; i < points.length; i++) {
     const dx = Math.abs(points[i]!.x - points[i - 1]!.x)
@@ -864,19 +873,39 @@ function orthogonalizeEdgePoints(
     const dy = Math.abs(curr.y - prev.y)
 
     if (dx > 1 && dy > 1) {
-      if (margins) {
-        // Margin routing: exit horizontally → travel vertically along margin → enter horizontally
-        // Alternate left/right margins and offset for parallel edge spacing
+      // Prefer simple Z-paths. Only fall back to margin detour when both
+      // elbow choices would land the junction inside a subgraph that contains
+      // neither endpoint (i.e. a group the edge has no business entering).
+      const elbowH: Point = { x: curr.x, y: prev.y } // horizontal then vertical
+      const elbowV: Point = { x: prev.x, y: curr.y } // vertical then horizontal
+
+      const groups = margins?.groups ?? []
+      const src = points[0]!
+      const tgt = points[points.length - 1]!
+      const elbowHBad =
+        junctionInsideForeignGroup(elbowH, src, tgt, groups) ||
+        segmentCrossesForeignGroup(prev, elbowH, src, tgt, groups) ||
+        segmentCrossesForeignGroup(elbowH, curr, src, tgt, groups)
+      const elbowVBad =
+        junctionInsideForeignGroup(elbowV, src, tgt, groups) ||
+        segmentCrossesForeignGroup(prev, elbowV, src, tgt, groups) ||
+        segmentCrossesForeignGroup(elbowV, curr, src, tgt, groups)
+
+      if (!elbowHBad) {
+        result.push(elbowH)
+      } else if (!elbowVBad) {
+        result.push(elbowV)
+      } else if (margins) {
+        // Last resort: detour through the nearest diagram margin so we skirt
+        // the blocking group. Alternate sides for parallel-edge spacing.
         const useRight = edgeIndex % 2 === 0
         const offset = Math.floor(edgeIndex / 2) * EDGE_SPACING
         const marginX = useRight
           ? margins.rightX + offset
           : margins.leftX - offset
-
         result.push({ x: marginX, y: prev.y })
         result.push({ x: marginX, y: curr.y })
       } else {
-        // Fallback: Z-path through vertical midpoint
         const midY = (prev.y + curr.y) / 2
         result.push({ x: prev.x, y: midY })
         result.push({ x: curr.x, y: midY })
@@ -887,6 +916,74 @@ function orthogonalizeEdgePoints(
   }
 
   return result
+}
+
+/**
+ * Is `p` strictly inside a group that does not contain either of the segment
+ * endpoints? If yes, routing through `p` would pierce an unrelated subgraph.
+ */
+function junctionInsideForeignGroup(
+  p: Point,
+  a: Point,
+  b: Point,
+  groups: GroupBounds[]
+): boolean {
+  const TOL = 1
+  for (const g of groups) {
+    const pInside =
+      p.x > g.x + TOL && p.x < g.right - TOL &&
+      p.y > g.y + TOL && p.y < g.bottom - TOL
+    if (!pInside) continue
+
+    const aInside =
+      a.x >= g.x - TOL && a.x <= g.right + TOL &&
+      a.y >= g.y - TOL && a.y <= g.bottom + TOL
+    const bInside =
+      b.x >= g.x - TOL && b.x <= g.right + TOL &&
+      b.y >= g.y - TOL && b.y <= g.bottom + TOL
+
+    if (!aInside && !bInside) return true
+  }
+  return false
+}
+
+/**
+ * Does the orthogonal segment a→b pass through the interior of a group that
+ * contains neither the original edge source nor target? Segments naturally
+ * exit/enter groups that contain one of the endpoints, so those aren't
+ * considered crossings.
+ */
+function segmentCrossesForeignGroup(
+  a: Point,
+  b: Point,
+  src: Point,
+  tgt: Point,
+  groups: GroupBounds[]
+): boolean {
+  const TOL = 1
+  for (const g of groups) {
+    const contains = (p: Point) =>
+      p.x >= g.x - TOL && p.x <= g.right + TOL &&
+      p.y >= g.y - TOL && p.y <= g.bottom + TOL
+    if (contains(src) || contains(tgt)) continue
+
+    if (Math.abs(a.y - b.y) < TOL) {
+      const y = (a.y + b.y) / 2
+      if (y <= g.y + TOL || y >= g.bottom - TOL) continue
+      const xa = Math.min(a.x, b.x)
+      const xb = Math.max(a.x, b.x)
+      const overlap = Math.min(xb, g.right - TOL) - Math.max(xa, g.x + TOL)
+      if (overlap > TOL) return true
+    } else if (Math.abs(a.x - b.x) < TOL) {
+      const x = (a.x + b.x) / 2
+      if (x <= g.x + TOL || x >= g.right - TOL) continue
+      const ya = Math.min(a.y, b.y)
+      const yb = Math.max(a.y, b.y)
+      const overlap = Math.min(yb, g.bottom - TOL) - Math.max(ya, g.y + TOL)
+      if (overlap > TOL) return true
+    }
+  }
+  return false
 }
 
 /**
