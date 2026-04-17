@@ -273,6 +273,7 @@ async function readCssFiles(): Promise<string> {
     'css/font-picker.css',
     'css/samples.css',
     'css/export.css',
+    'css/security.css',
     'css/misc.css',
   ]
   const parts = await Promise.all(order.map(f => readFile(f)))
@@ -299,6 +300,7 @@ async function readJsFiles(samplesJson: string): Promise<string> {
     'js/resize.js',
     'js/toast.js',
     'js/dark-mode.js',
+    'js/security.js',
     'js/init.js',
   ]
   const parts = await Promise.all(order.map(f => readFile(f)))
