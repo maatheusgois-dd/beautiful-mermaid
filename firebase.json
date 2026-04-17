@@ -11,7 +11,11 @@
     "rewrites": [
       {
         "source": "/editor",
-        "destination": "/editor.html"
+        "destination": "/index.html"
+      },
+      {
+        "source": "/samples",
+        "destination": "/samples.html"
       }
     ],
     "headers": [

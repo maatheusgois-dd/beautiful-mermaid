@@ -33,12 +33,12 @@ editor: ## Build editor.html
 samples: ## Build index.html (samples showcase)
 	$(BUN) run samples
 
-build: clean editor samples ## Build full site/ for deployment
+build: clean editor samples ## Build full site/ for deployment (editor as index)
 	@mkdir -p $(SITE_DIR)
-	@mv index.html $(SITE_DIR)/
-	@mv editor.html $(SITE_DIR)/
+	@mv index.html $(SITE_DIR)/samples.html
+	@mv editor.html $(SITE_DIR)/index.html
 	@cp -r public/* $(SITE_DIR)/
-	@echo "✓ Site built at $(SITE_DIR)/"
+	@echo "✓ Site built at $(SITE_DIR)/ (editor served as /, samples at /samples)"
 	@ls -lh $(SITE_DIR)/
 
 firebase-login: ## Log in to Firebase CLI
