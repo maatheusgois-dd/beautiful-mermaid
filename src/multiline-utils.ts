@@ -191,7 +191,7 @@ export function renderMultilineText(
  * @param textWidth - Pre-calculated text width (max line width)
  * @param textHeight - Pre-calculated text height (lines × lineHeight)
  * @param fontSize - Font size in pixels
- * @param padding - Padding around text
+ * @param padding - Padding around text (number: uniform, or {x,y}: separate)
  * @param textAttrs - SVG attributes for the text element
  * @param bgAttrs - SVG attributes for the background rect
  * @returns SVG elements string (rect + text)
@@ -203,12 +203,14 @@ export function renderMultilineTextWithBackground(
   textWidth: number,
   textHeight: number,
   fontSize: number,
-  padding: number,
+  padding: number | { x: number; y: number },
   textAttrs: string,
   bgAttrs: string
 ): string {
-  const bgWidth = textWidth + padding * 2
-  const bgHeight = textHeight + padding * 2
+  const padX = typeof padding === 'number' ? padding : padding.x
+  const padY = typeof padding === 'number' ? padding : padding.y
+  const bgWidth = textWidth + padX * 2
+  const bgHeight = textHeight + padY * 2
 
   const rect = `<rect x="${cx - bgWidth / 2}" y="${cy - bgHeight / 2}" ` +
     `width="${bgWidth}" height="${bgHeight}" ${bgAttrs} />`

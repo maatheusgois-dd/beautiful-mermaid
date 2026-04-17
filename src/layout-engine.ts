@@ -304,8 +304,8 @@ function mermaidToElk(
       const metrics = measureMultilineText(edge.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
       elkEdge.labels = [{
         text: edge.label,
-        width: metrics.width + 8,
-        height: metrics.height + 6,
+        width: metrics.width + 28,
+        height: metrics.height + 12,
         layoutOptions: {
           'elk.edgeLabels.inline': 'true',
           'elk.edgeLabels.placement': 'CENTER',
@@ -326,8 +326,8 @@ function mermaidToElk(
       const metrics = measureMultilineText(edge.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
       elkEdge.labels = [{
         text: edge.label,
-        width: metrics.width + 8,
-        height: metrics.height + 6,
+        width: metrics.width + 28,
+        height: metrics.height + 12,
         layoutOptions: {
           'elk.edgeLabels.inline': 'true',
           'elk.edgeLabels.placement': 'CENTER',
@@ -444,8 +444,8 @@ function subgraphToElk(
       const metrics = measureMultilineText(edge.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
       elkEdge.labels = [{
         text: edge.label,
-        width: metrics.width + 8,
-        height: metrics.height + 6,
+        width: metrics.width + 28,
+        height: metrics.height + 12,
         layoutOptions: {
           'elk.edgeLabels.inline': 'true',
           'elk.edgeLabels.placement': 'CENTER',

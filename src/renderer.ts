@@ -244,7 +244,7 @@ function renderEdgeLabel(edge: PositionedEdge, font: string): string {
   // Fall back to geometric midpoint of the edge polyline.
   const mid = edge.labelPosition ?? edgeMidpoint(edge.points)
   const label = edge.label!
-  const padding = 8
+  const padding = { x: 14, y: 6 }
 
   // Measure text (works for both single and multi-line)
   const metrics = measureMultilineText(label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
