@@ -60,6 +60,22 @@ function directionToElk(dir: MermaidGraph['direction']): string {
   }
 }
 
+/**
+ * For a subgraph embedded in a parent with `parentDir`, return the ELK port
+ * side (NORTH/SOUTH/EAST/WEST) that matches the natural "incoming from above"
+ * and "outgoing below" flow of the parent layout.
+ */
+function portSidesForParent(parentDir: Direction): { incoming: string; outgoing: string } {
+  switch (parentDir) {
+    case 'LR': return { incoming: 'WEST', outgoing: 'EAST' }
+    case 'RL': return { incoming: 'EAST', outgoing: 'WEST' }
+    case 'BT': return { incoming: 'SOUTH', outgoing: 'NORTH' }
+    case 'TD':
+    case 'TB':
+    default:   return { incoming: 'NORTH', outgoing: 'SOUTH' }
+  }
+}
+
 // ============================================================================
 // Node sizing (same logic as Dagre adapter)
 // ============================================================================
@@ -274,7 +290,7 @@ function mermaidToElk(
 
   // Add subgraphs as compound nodes with children and their internal edges
   for (const sg of graph.subgraphs) {
-    elkGraph.children!.push(subgraphToElk(sg, graph, opts, edgesBySubgraph, subgraphPorts))
+    elkGraph.children!.push(subgraphToElk(sg, graph, opts, edgesBySubgraph, subgraphPorts, graph.direction))
   }
 
   // Add root-level edges
@@ -342,7 +358,8 @@ function subgraphToElk(
     edgeIndex: number
     direction: 'incoming' | 'outgoing'
     internalNodeId: string
-  }>>
+  }>>,
+  parentDirection: Direction
 ): ElkGraphNode {
   const layoutOptions: LayoutOptions = {
     'elk.algorithm': 'layered',
@@ -370,14 +387,29 @@ function subgraphToElk(
     edges: [],
   }
 
-  // Add hierarchical ports for cross-hierarchy edges (when using SEPARATE)
+  // Add hierarchical ports for cross-hierarchy edges (when using SEPARATE).
+  //
+  // Port side pinning: cross-hierarchy edges travel along the PARENT graph's
+  // flow direction, so their entry/exit points on the subgraph boundary should
+  // sit on the side perpendicular to the child's direction. Without this, when
+  // a subgraph has a direction override AND has only cross-hierarchy edges (no
+  // internal edges), ELK has no structural reason to place nodes along the
+  // child direction and stacks them along the port→node axis instead.
+  //
+  // Example: parent=TB, child=LR, 4 incoming edges from above → ports pinned
+  // to NORTH so children can lay out horizontally; otherwise ELK puts ports in
+  // column 0 and all 4 children stack vertically in column 1.
   const ports = subgraphPorts.get(sg.id) ?? []
   if (ports.length > 0) {
+    const { incoming: incomingSide, outgoing: outgoingSide } = portSidesForParent(parentDirection)
     // ELK supports ports but types don't include it
-    (elkNode as unknown as Record<string, unknown>).ports = ports.map(p => ({
+    ;(elkNode as unknown as Record<string, unknown>).ports = ports.map(p => ({
       id: p.portId,
-      // Port side is determined by ELK based on edge direction
+      layoutOptions: {
+        'elk.port.side': p.direction === 'incoming' ? incomingSide : outgoingSide,
+      },
     }))
+    layoutOptions['elk.portConstraints'] = 'FIXED_SIDE'
   }
 
   // Add direct child nodes
@@ -394,9 +426,10 @@ function subgraphToElk(
     }
   }
 
-  // Add nested subgraphs recursively
+  // Add nested subgraphs recursively (child's parent direction = this sg's direction, falling back to grand-parent)
+  const childParentDir: Direction = sg.direction ?? parentDirection
   for (const child of sg.children) {
-    elkNode.children!.push(subgraphToElk(child, graph, opts, edgesBySubgraph, subgraphPorts))
+    elkNode.children!.push(subgraphToElk(child, graph, opts, edgesBySubgraph, subgraphPorts, childParentDir))
   }
 
   // Add internal edges (edges where both endpoints are in this subgraph)
