@@ -17,6 +17,7 @@
 
 import { samples } from './samples-data.ts'
 import { THEMES } from './src/theme.ts'
+import { FIREBASE_SNIPPET } from './src/firebase-snippet.ts'
 import { createHighlighter } from 'shiki'
 
 // ============================================================================
@@ -1843,6 +1844,8 @@ ${bundleJs}
       </a>
     </div>
   </footer>
+
+  ${FIREBASE_SNIPPET}
 </body>
 </html>`
 }

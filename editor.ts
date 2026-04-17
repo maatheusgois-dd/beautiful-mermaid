@@ -18,6 +18,7 @@
  */
 
 import { THEMES } from './src/theme.ts'
+import { FIREBASE_SNIPPET } from './src/firebase-snippet.ts'
 
 const THEME_LABELS: Record<string, string> = {
   'zinc-dark': 'Zinc Dark',
@@ -406,6 +407,8 @@ ${bundleJs}
 ${appJs}
 
 </script>
+
+${FIREBASE_SNIPPET}
 </body>
 </html>`
 }
