@@ -660,52 +660,56 @@ function elkToPositioned(
     }
   }
 
-  // Horizontal recentering: ELK's layered layout can produce asymmetric
-  // left/right margins when branches have different widths (e.g. a diamond
-  // with unequal-width children). Compute the true content bbox and shift
-  // everything so the paddings match on both sides.
+  // Recenter content both horizontally and vertically: ELK's layered layout
+  // can produce asymmetric left/right (and top/bottom) margins when the
+  // layers have different widths, branches have different widths, or ELK's
+  // internal padding doesn't match our `padding`. Compute the real content
+  // bbox and shift everything so padding is equal on opposing sides.
   {
-    let contentMinX = Infinity
-    let contentMaxX = -Infinity
-    for (const n of nodes) {
-      contentMinX = Math.min(contentMinX, n.x)
-      contentMaxX = Math.max(contentMaxX, n.x + n.width)
+    let minCX = Infinity, maxCX = -Infinity
+    let minCY = Infinity, maxCY = -Infinity
+    const expand = (x1: number, y1: number, x2: number, y2: number) => {
+      minCX = Math.min(minCX, x1); maxCX = Math.max(maxCX, x2)
+      minCY = Math.min(minCY, y1); maxCY = Math.max(maxCY, y2)
     }
-    for (const g of groups) {
-      contentMinX = Math.min(contentMinX, g.x)
-      contentMaxX = Math.max(contentMaxX, g.x + g.width)
-    }
+    for (const n of nodes) expand(n.x, n.y, n.x + n.width, n.y + n.height)
+    for (const g of groups) expand(g.x, g.y, g.x + g.width, g.y + g.height)
     for (const edge of edges) {
       for (const p of edge.points) {
-        contentMinX = Math.min(contentMinX, p.x - arrowMargin)
-        contentMaxX = Math.max(contentMaxX, p.x + arrowMargin)
+        expand(p.x - arrowMargin, p.y - arrowMargin, p.x + arrowMargin, p.y + arrowMargin)
       }
       if (edge.labelPosition && edge.label) {
         const m = measureMultilineText(edge.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
-        contentMinX = Math.min(contentMinX, edge.labelPosition.x - m.width / 2 - 16)
-        contentMaxX = Math.max(contentMaxX, edge.labelPosition.x + m.width / 2 + 16)
+        expand(
+          edge.labelPosition.x - m.width / 2 - 16,
+          edge.labelPosition.y - m.height / 2 - 8,
+          edge.labelPosition.x + m.width / 2 + 16,
+          edge.labelPosition.y + m.height / 2 + 8
+        )
       }
     }
 
-    if (Number.isFinite(contentMinX) && contentMaxX > contentMinX) {
-      const leftPad = contentMinX
-      const rightPad = width - contentMaxX
-      // Only rebalance if the asymmetry is visually noticeable (> 1px).
-      if (Math.abs(leftPad - rightPad) > 1) {
-        // Center content: target padding = average of both sides, floored
-        // at the configured `padding` so we never shrink below the minimum.
-        const target = Math.max(padding, (leftPad + rightPad) / 2)
-        const deltaShift = target - leftPad
-        if (Math.abs(deltaShift) > 0.5) {
-          for (const n of nodes) n.x += deltaShift
-          for (const g of groups) shiftGroup(g, deltaShift, 0)
-          for (const edge of edges) {
-            for (const p of edge.points) p.x += deltaShift
-            if (edge.labelPosition) edge.labelPosition.x += deltaShift
+    if (Number.isFinite(minCX) && maxCX > minCX) {
+      const leftPad = minCX, rightPad = width - maxCX
+      const topPad = minCY, bottomPad = height - maxCY
+      // Target padding per axis: average of both sides, floored at `padding`.
+      const targetX = Math.max(padding, (leftPad + rightPad) / 2)
+      const targetY = Math.max(padding, (topPad + bottomPad) / 2)
+      const dx = Math.abs(leftPad - rightPad) > 1 ? targetX - leftPad : 0
+      const dy = Math.abs(topPad - bottomPad) > 1 ? targetY - topPad : 0
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        for (const n of nodes) { n.x += dx; n.y += dy }
+        for (const g of groups) shiftGroup(g, dx, dy)
+        for (const edge of edges) {
+          for (const p of edge.points) { p.x += dx; p.y += dy }
+          if (edge.labelPosition) {
+            edge.labelPosition.x += dx
+            edge.labelPosition.y += dy
           }
         }
-        width = contentMaxX + deltaShift + target
       }
+      if (dx !== 0) width = maxCX + dx + targetX
+      if (dy !== 0) height = maxCY + dy + targetY
     }
   }
 
