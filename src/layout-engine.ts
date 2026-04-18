@@ -1092,9 +1092,9 @@ function computeEscapeDetour(
   edgeIndex: number
 ): Point[] | null {
   // Stagger detour offsets so parallel escape routes don't stack on top of
-  // each other. Use a wider stride cycling through 6 slots — gives a visible
-  // spread when multiple edges escape through the same margin.
-  const PAD = 14 + (edgeIndex % 6) * 20
+  // each other. Use a wider stride (24px) cycling through 6 slots — gives a
+  // visible spread when multiple edges escape through the same margin.
+  const PAD = 12 + (edgeIndex % 6) * 14
   const candidates: Array<{ mids: Point[]; cost: number }> = []
 
   const mkCand = (mids: Point[]) => {
