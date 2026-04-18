@@ -67,21 +67,46 @@ export function layoutSequenceDiagram(
     return Math.max(textW + SEQ.actorPadX * 2, 80)
   })
 
+  // Build actor ID → index lookup (needed before gap calc for message lookup)
+  const actorIndex = new Map<string, number>()
+  for (let i = 0; i < diagram.actors.length; i++) {
+    actorIndex.set(diagram.actors[i]!.id, i)
+  }
+
+  // For each adjacent actor pair (i, i+1), find the widest message label that
+  // spans this gap so the center-to-center distance accommodates the label
+  // without it overflowing past the next lifeline. Self-messages don't span
+  // a gap so they're ignored here.
+  const LABEL_MIN_PADDING = 24 // px total breathing room on either side of label
+  const maxLabelWidthSpanning = new Array<number>(Math.max(0, diagram.actors.length - 1)).fill(0)
+  for (const msg of diagram.messages) {
+    if (!msg.label || msg.from === msg.to) continue
+    const fromIdx = actorIndex.get(msg.from) ?? 0
+    const toIdx = actorIndex.get(msg.to) ?? 0
+    const lo = Math.min(fromIdx, toIdx)
+    const hi = Math.max(fromIdx, toIdx)
+    // Label is centered across the span [lo, hi]; distribute the required
+    // width across the gaps it crosses so wide labels on long arrows don't
+    // blow up a single gap.
+    const lines = msg.label.split('\n')
+    const w = Math.max(...lines.map(l => estimateTextWidth(l, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)))
+    const perGap = (w + LABEL_MIN_PADDING) / Math.max(1, hi - lo)
+    for (let i = lo; i < hi; i++) {
+      maxLabelWidthSpanning[i] = Math.max(maxLabelWidthSpanning[i]!, perGap)
+    }
+  }
+
   // Build actor center X positions with minimum gap
   const actorCenterX: number[] = []
   let currentX = SEQ.padding + actorWidths[0]! / 2
   for (let i = 0; i < diagram.actors.length; i++) {
     if (i > 0) {
-      const minGap = Math.max(SEQ.actorGap, (actorWidths[i - 1]! + actorWidths[i]!) / 2 + 40)
+      const boxGap = (actorWidths[i - 1]! + actorWidths[i]!) / 2 + 40
+      const labelGap = (actorWidths[i - 1]! + actorWidths[i]!) / 2 + (maxLabelWidthSpanning[i - 1] ?? 0)
+      const minGap = Math.max(SEQ.actorGap, boxGap, labelGap)
       currentX += minGap
     }
     actorCenterX.push(currentX)
-  }
-
-  // Build actor ID → index lookup
-  const actorIndex = new Map<string, number>()
-  for (let i = 0; i < diagram.actors.length; i++) {
-    actorIndex.set(diagram.actors[i]!.id, i)
   }
 
   // 2. Position actors at the top

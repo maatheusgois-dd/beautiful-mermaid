@@ -125,8 +125,11 @@ function renderActor(actor: PositionedActor): string {
   )
 
   if (effShape === 'boundary') {
-    // Boundary actor: vertical line + horizontal stub + open circle,
-    // rendered in a 24×24 coordinate box like the `actor` icon.
+    // Boundary actor: vertical handle + horizontal stub + open circle,
+    // rendered in a 24×24 coordinate box so it visually matches the box
+    // height of adjacent `participant` rectangles (same scale/center as the
+    // `actor` stick-figure icon). Circle diameter ≈ 18 fills most of the
+    // vertical span so the top/bottom line up with neighbouring boxes.
     const s = (height / 24) * 0.9
     const tx = x - 12 * s
     const ty = y + (height - 24 * s) / 2
@@ -134,12 +137,12 @@ function renderActor(actor: PositionedActor): string {
     const iconStroke = 'var(--_line)'
     parts.push(
       `  <g transform="translate(${tx},${ty}) scale(${s})">` +
-      // Vertical handle
-      `\n    <path d="M3 7 L3 17" fill="none" stroke="${iconStroke}" stroke-width="${sw}" stroke-linecap="round" />` +
+      // Vertical handle (nearly full height)
+      `\n    <path d="M3 3 L3 21" fill="none" stroke="${iconStroke}" stroke-width="${sw}" stroke-linecap="round" />` +
       // Horizontal stub connecting handle to circle
-      `\n    <path d="M3 12 L8 12" fill="none" stroke="${iconStroke}" stroke-width="${sw}" stroke-linecap="round" />` +
-      // Circle body
-      `\n    <circle cx="14" cy="12" r="6" fill="var(--_node-fill)" stroke="${iconStroke}" stroke-width="${sw}" />` +
+      `\n    <path d="M3 12 L7 12" fill="none" stroke="${iconStroke}" stroke-width="${sw}" stroke-linecap="round" />` +
+      // Circle body (r≈8 so it fills most of the 24×24 box vertically)
+      `\n    <circle cx="15" cy="12" r="8" fill="var(--_node-fill)" stroke="${iconStroke}" stroke-width="${sw}" />` +
       `\n  </g>`
     )
     parts.push(
