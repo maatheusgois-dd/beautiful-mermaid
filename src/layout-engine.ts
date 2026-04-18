@@ -660,6 +660,55 @@ function elkToPositioned(
     }
   }
 
+  // Horizontal recentering: ELK's layered layout can produce asymmetric
+  // left/right margins when branches have different widths (e.g. a diamond
+  // with unequal-width children). Compute the true content bbox and shift
+  // everything so the paddings match on both sides.
+  {
+    let contentMinX = Infinity
+    let contentMaxX = -Infinity
+    for (const n of nodes) {
+      contentMinX = Math.min(contentMinX, n.x)
+      contentMaxX = Math.max(contentMaxX, n.x + n.width)
+    }
+    for (const g of groups) {
+      contentMinX = Math.min(contentMinX, g.x)
+      contentMaxX = Math.max(contentMaxX, g.x + g.width)
+    }
+    for (const edge of edges) {
+      for (const p of edge.points) {
+        contentMinX = Math.min(contentMinX, p.x - arrowMargin)
+        contentMaxX = Math.max(contentMaxX, p.x + arrowMargin)
+      }
+      if (edge.labelPosition && edge.label) {
+        const m = measureMultilineText(edge.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
+        contentMinX = Math.min(contentMinX, edge.labelPosition.x - m.width / 2 - 16)
+        contentMaxX = Math.max(contentMaxX, edge.labelPosition.x + m.width / 2 + 16)
+      }
+    }
+
+    if (Number.isFinite(contentMinX) && contentMaxX > contentMinX) {
+      const leftPad = contentMinX
+      const rightPad = width - contentMaxX
+      // Only rebalance if the asymmetry is visually noticeable (> 1px).
+      if (Math.abs(leftPad - rightPad) > 1) {
+        // Center content: target padding = average of both sides, floored
+        // at the configured `padding` so we never shrink below the minimum.
+        const target = Math.max(padding, (leftPad + rightPad) / 2)
+        const deltaShift = target - leftPad
+        if (Math.abs(deltaShift) > 0.5) {
+          for (const n of nodes) n.x += deltaShift
+          for (const g of groups) shiftGroup(g, deltaShift, 0)
+          for (const edge of edges) {
+            for (const p of edge.points) p.x += deltaShift
+            if (edge.labelPosition) edge.labelPosition.x += deltaShift
+          }
+        }
+        width = contentMaxX + deltaShift + target
+      }
+    }
+  }
+
   return {
     width,
     height,
