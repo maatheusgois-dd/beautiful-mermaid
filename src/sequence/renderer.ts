@@ -112,15 +112,41 @@ function arrowMarkerDefs(): string {
  * Wrapped in <g class="actor"> with semantic data attributes.
  */
 function renderActor(actor: PositionedActor): string {
-  const { id, x, y, width, height, label, type } = actor
+  const { id, x, y, width, height, label, type, shape } = actor
   const parts: string[] = []
+
+  // Effective shape: explicit annotation wins; otherwise fall back to `type`.
+  const effShape = shape ?? type
 
   // Semantic wrapper with actor metadata
   parts.push(
-    `<g class="actor" data-id="${escapeAttr(id)}" data-label="${escapeAttr(label)}" data-type="${type}">`
+    `<g class="actor" data-id="${escapeAttr(id)}" data-label="${escapeAttr(label)}" ` +
+      `data-type="${type}" data-shape="${effShape}">`
   )
 
-  if (type === 'actor') {
+  if (effShape === 'boundary') {
+    // Boundary actor: vertical line + horizontal stub + open circle,
+    // rendered in a 24×24 coordinate box like the `actor` icon.
+    const s = (height / 24) * 0.9
+    const tx = x - 12 * s
+    const ty = y + (height - 24 * s) / 2
+    const sw = STROKE_WIDTHS.outerBox / s
+    const iconStroke = 'var(--_line)'
+    parts.push(
+      `  <g transform="translate(${tx},${ty}) scale(${s})">` +
+      // Vertical handle
+      `\n    <path d="M3 7 L3 17" fill="none" stroke="${iconStroke}" stroke-width="${sw}" stroke-linecap="round" />` +
+      // Horizontal stub connecting handle to circle
+      `\n    <path d="M3 12 L8 12" fill="none" stroke="${iconStroke}" stroke-width="${sw}" stroke-linecap="round" />` +
+      // Circle body
+      `\n    <circle cx="14" cy="12" r="6" fill="var(--_node-fill)" stroke="${iconStroke}" stroke-width="${sw}" />` +
+      `\n  </g>`
+    )
+    parts.push(
+      '  ' + renderMultilineText(label, x, y + height + 14, FONT_SIZES.nodeLabel,
+        `font-size="${FONT_SIZES.nodeLabel}" text-anchor="middle" font-weight="${FONT_WEIGHTS.nodeLabel}" fill="var(--_text)"`)
+    )
+  } else if (type === 'actor') {
     // Circle-person icon: outer circle + head circle + shoulders arc.
     // Defined in a 24×24 coordinate space, scaled to 90% of the actor box height
     // and centered both horizontally and vertically within the box.

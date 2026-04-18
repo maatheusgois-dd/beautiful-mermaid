@@ -1,4 +1,4 @@
-import type { SequenceDiagram, Actor, Message, Block, Note } from './types.ts'
+import type { SequenceDiagram, Actor, ActorShape, Message, Block, Note } from './types.ts'
 import { normalizeBrTags } from '../multiline-utils.ts'
 
 // ============================================================================
@@ -47,15 +47,20 @@ export function parseSequenceDiagram(lines: string[]): SequenceDiagram {
     // --- Participant / Actor declaration ---
     // "participant A as Alice" or "participant Alice"
     // "actor B as Bob" or "actor Bob"
-    const actorMatch = line.match(/^(participant|actor)\s+(\S+?)(?:\s+as\s+(.+))?$/)
+    // "participant Alice@{ "type" : "boundary" }" — shape annotation
+    const actorMatch = line.match(
+      /^(participant|actor)\s+([^\s@]+)(?:@\{([^}]*)\})?(?:\s+as\s+(.+))?$/
+    )
     if (actorMatch) {
       const type = actorMatch[1] as 'participant' | 'actor'
       const id = actorMatch[2]!
-      const rawLabel = actorMatch[3]?.trim() ?? id
+      const shapeBlock = actorMatch[3]
+      const rawLabel = actorMatch[4]?.trim() ?? id
       const label = normalizeBrTags(rawLabel)
+      const shape = parseActorShape(shapeBlock, type)
       if (!actorIds.has(id)) {
         actorIds.add(id)
-        diagram.actors.push({ id, label, type })
+        diagram.actors.push({ id, label, type, ...(shape ? { shape } : {}) })
       }
       continue
     }
@@ -204,4 +209,31 @@ function ensureActor(diagram: SequenceDiagram, actorIds: Set<string>, id: string
     actorIds.add(id)
     diagram.actors.push({ id, label: id, type: 'participant' })
   }
+}
+
+const SHAPE_ALIASES: Record<string, ActorShape> = {
+  actor: 'actor',
+  participant: 'participant',
+  boundary: 'boundary',
+  control: 'control',
+  entity: 'entity',
+  database: 'database',
+  collections: 'collections',
+  queue: 'queue',
+}
+
+/**
+ * Parse the body of a `@{ ... }` actor annotation, e.g.
+ *   participant Alice@{ "type" : "boundary" }
+ * Accepts loose key/value syntax with or without quotes.
+ */
+function parseActorShape(
+  block: string | undefined,
+  _defaultType: 'participant' | 'actor'
+): ActorShape | undefined {
+  if (!block) return undefined
+  const match = block.match(/["']?type["']?\s*:\s*["']?([a-zA-Z]+)["']?/)
+  if (!match) return undefined
+  const raw = match[1]!.toLowerCase()
+  return SHAPE_ALIASES[raw]
 }

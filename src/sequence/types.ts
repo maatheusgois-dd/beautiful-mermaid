@@ -17,11 +17,24 @@ export interface SequenceDiagram {
   notes: Note[]
 }
 
+/** Extended actor shapes from Mermaid `@{ "type": "..." }` annotations */
+export type ActorShape =
+  | 'participant'
+  | 'actor'
+  | 'boundary'
+  | 'control'
+  | 'entity'
+  | 'database'
+  | 'collections'
+  | 'queue'
+
 export interface Actor {
   id: string
   label: string
-  /** 'participant' renders as a box, 'actor' renders as a stick figure */
+  /** Underlying actor kind: 'participant' (box) or 'actor' (stick figure) */
   type: 'participant' | 'actor'
+  /** Optional explicit shape from `participant X@{ "type": "boundary" }` syntax */
+  shape?: ActorShape
 }
 
 export interface Message {
@@ -83,6 +96,8 @@ export interface PositionedActor {
   id: string
   label: string
   type: 'participant' | 'actor'
+  /** Optional explicit shape (boundary, control, entity, …) */
+  shape?: ActorShape
   /** Center x of the actor box */
   x: number
   /** Top y of the actor box */

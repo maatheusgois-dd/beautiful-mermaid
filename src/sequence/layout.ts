@@ -90,6 +90,7 @@ export function layoutSequenceDiagram(
     id: a.id,
     label: a.label,
     type: a.type,
+    ...(a.shape ? { shape: a.shape } : {}),
     x: actorCenterX[i]!,
     y: actorY,
     width: actorWidths[i]!,
@@ -101,8 +102,8 @@ export function layoutSequenceDiagram(
   // actor-type participants render their label BELOW the icon at
   // actorY + actorHeight + 14. That label bleeds into headerGap and collides
   // with the first message label. Add enough room to clear it.
-  const hasActorType = diagram.actors.some(a => a.type === 'actor')
-  const actorLabelExtra = hasActorType ? (FONT_SIZES.nodeLabel + 16) : 0
+  const hasLabelBelow = diagram.actors.some(a => a.type === 'actor' || a.shape === 'boundary')
+  const actorLabelExtra = hasLabelBelow ? (FONT_SIZES.nodeLabel + 16) : 0
   let messageY = actorY + SEQ.actorHeight + SEQ.headerGap + actorLabelExtra
   const messages: PositionedMessage[] = []
 
@@ -422,7 +423,8 @@ export function layoutSequenceDiagram(
   // 9. Calculate diagram dimensions from the bounding box
   // Height extends past bottom actor boxes.
   const diagramWidth = globalMaxX + shiftX + SEQ.padding
-  const diagramHeight = bottomActorY + SEQ.actorHeight + SEQ.padding
+  const bottomLabelExtra = hasLabelBelow ? (FONT_SIZES.nodeLabel + 16) : 0
+  const diagramHeight = bottomActorY + SEQ.actorHeight + bottomLabelExtra + SEQ.padding
 
   return {
     width: Math.max(diagramWidth, 200),
