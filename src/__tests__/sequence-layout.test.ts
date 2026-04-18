@@ -281,8 +281,11 @@ describe('sequence layout – diagram dimensions', () => {
         B->>A: M4
       end`)
 
-    // blockHeaderExtra (28) + 2 × dividerExtra (24 each) = 76 extra
-    expect(withDividers.height - noDividers.height).toBe(28 + 24 + 24)
+    // blockHeaderExtra (28) + 2 × dividerExtra (24 each) = 76 extra from
+    // inserted vertical space between messages, plus the trailing block pad
+    // below the last message (blockPadBottom 8 + 12 inner = 20) which now
+    // pushes the bottom actor row down as part of the centering pass.
+    expect(withDividers.height - noDividers.height).toBe(28 + 24 + 24 + 20)
   })
 })
 

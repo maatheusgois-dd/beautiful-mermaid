@@ -357,6 +357,26 @@ export function layoutSequenceDiagram(
   //    (step 3) to properly account for self-message loops and vertical stacking.
   const notes = positionedNotes
 
+  // 5b. Vertically center the message block between the top and bottom actor
+  //     rows. The gap ABOVE the first arrow already accounts for the top actor
+  //     label (actorLabelExtra) when the top row has `actor` / `boundary`
+  //     shapes. We mirror that gap BELOW the last message so the lifeline
+  //     looks balanced instead of top-heavy.
+  if (messages.length > 0) {
+    const firstMsg = messages[0]!
+    const lastMsg = messages[messages.length - 1]!
+    const topGap = firstMsg.y - (actorY + SEQ.actorHeight)
+    let lastExtent = lastMsg.y + (lastMsg.isSelf ? SEQ.selfMessageHeight : 0)
+    for (const n of notes) lastExtent = Math.max(lastExtent, n.y + n.height)
+    for (const b of blocks) lastExtent = Math.max(lastExtent, b.y + b.height)
+    // bottomActorY is later set to `messageY + SEQ.padding`, so solve for the
+    // messageY that makes (bottomActorY - lastExtent) equal to topGap.
+    const symmetricMessageY = lastExtent + topGap - SEQ.padding
+    // Never shrink below a small trailing pad (keeps arrow from kissing icon).
+    const minMessageY = lastExtent + 10
+    messageY = Math.max(minMessageY, symmetricMessageY)
+  }
+
   // 6. Bounding-box post-processing
   //
   // Notes positioned "left of" the first actor or "right of" the last actor
