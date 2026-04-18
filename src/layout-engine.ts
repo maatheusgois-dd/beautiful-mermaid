@@ -541,7 +541,8 @@ function flattenGroupBounds(groups: PositionedGroup[]): Array<{ x: number; y: nu
 function elkToPositioned(
   elkResult: ElkNode,
   graph: MermaidGraph,
-  mergeEdges: boolean = false
+  mergeEdges: boolean = false,
+  paddingOverride?: number
 ): PositionedGraph {
   const nodes: PositionedNode[] = []
   const edges: PositionedEdge[] = []
@@ -612,7 +613,7 @@ function elkToPositioned(
   let width = elkResult.width ?? 800
   let height = elkResult.height ?? 600
   const arrowMargin = ARROW_HEAD.width
-  const padding = DEFAULTS.padding
+  const padding = paddingOverride ?? DEFAULTS.padding
 
   // Detour routing can push edges and labels to the left of the diagram's
   // natural origin. Figure out how far left any content reaches so we can
@@ -692,11 +693,13 @@ function elkToPositioned(
     if (Number.isFinite(minCX) && maxCX > minCX) {
       const leftPad = minCX, rightPad = width - maxCX
       const topPad = minCY, bottomPad = height - maxCY
-      // Target padding per axis: average of both sides, floored at `padding`.
-      const targetX = Math.max(padding, (leftPad + rightPad) / 2)
-      const targetY = Math.max(padding, (topPad + bottomPad) / 2)
-      const dx = Math.abs(leftPad - rightPad) > 1 ? targetX - leftPad : 0
-      const dy = Math.abs(topPad - bottomPad) > 1 ? targetY - topPad : 0
+      // Target padding per axis: the configured minimum on both sides.
+      // ELK may have left more breathing room than we need; by tightening to
+      // `padding` we both center the content and remove surplus whitespace.
+      const targetX = padding
+      const targetY = padding
+      const dx = targetX - leftPad
+      const dy = targetY - topPad
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
         for (const n of nodes) { n.x += dx; n.y += dy }
         for (const g of groups) shiftGroup(g, dx, dy)
@@ -708,8 +711,10 @@ function elkToPositioned(
           }
         }
       }
-      if (dx !== 0) width = maxCX + dx + targetX
-      if (dy !== 0) height = maxCY + dy + targetY
+      // Tight-fit the SVG dimensions so rightPad == leftPad == targetX (and
+      // same for Y), regardless of whatever ELK originally reported.
+      width = (maxCX + dx) + targetX
+      height = (maxCY + dy) + targetY
     }
   }
 
@@ -1781,7 +1786,7 @@ export function layoutGraphSync(
   const opts = { ...DEFAULTS, ...options }
   const elkGraph = mermaidToElk(graph, opts)
   const result = elkLayoutSync(elkGraph)
-  return elkToPositioned(result, graph, DEFAULTS.mergeEdges)
+  return elkToPositioned(result, graph, DEFAULTS.mergeEdges, opts.padding)
 }
 
 /**
